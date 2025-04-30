@@ -1,6 +1,7 @@
 from typing import Any
 import torch
 import torch.nn as nn
+from my_Net import Net
 from torchvision import datasets, transforms
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -31,6 +32,56 @@ def getData() -> tuple[Any, DataLoader, DataLoader]:
     return classes, dataSet_train_DataLoader, dataSet_test_DataLoader
 
 
+# 创建训练方法
+def train(classes, dataSet_train_DataLoader) -> None:
+    model = Net()
+    model.train()
+    lossFn = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+    for epoch in range(10):
+        loss_all = 0
+        success_all = 0
+        tbpath = os.path.realpath(os.path.join(os.path.dirname(__file__), 'tensorboard'))
+
+        # 创建np模板
+        data_arr = np.empty(shape=(0, 5))
+        np.set_printoptions(suppress=True)  # 取消科学计数法
+        class_name = classes
+        for i, (train_x, train_y) in enumerate(dataSet_train_DataLoader):
+            pred = model(train_x)
+            loss = lossFn(pred, train_y)
+            optimizer.step()
+            optimizer.zero_grad()
+
+            loss_all += loss.item()
+
+            _, predicted = torch.max(pred, 1)
+            success_all += (predicted == train_y).sum().item()
+
+            y1 = pred.detach().numpy()
+            y2 = np.expand_dims(predicted.detach().numpy(), 1)
+            y3 = np.expand_dims(train_y.detach().numpy(), 1)
+
+            y_finall = np.hstack((y1, y2, y3), dtype=float)
+            data_arr = np.vstack((data_arr, y_finall))
+        print(f'第{epoch + 1}次训练的损失率：{loss_all / len(dataSet_train_DataLoader)}')
+        print(f'第{epoch + 1}次训练的成功率：{success_all / len(dataSet_train_DataLoader.dataset)}')
+        # 存储 csv文件
+        label = [*class_name, 'predict', 'real']
+        data_excel = pd.DataFrame(data_arr, columns=label)
+        path_name = os.path.join(os.getcwd(), 'excel', f'第{epoch + 1}次数据集.csv')
+        data_excel.to_csv(path_name, index=False)
+
+
+        read_data = pd.read_csv(path_name)
+        true_label = read_data["real"].values
+        pre_label = read_data["predict"].values
+        # 查看精确率和召回率
+        report = classification_report(y_true=true_label, y_pred=pre_label)
+        print(report)
+
 
 if __name__ == '__main__':
-    getData()
+    classes, dataSet_train_DataLoader, dataSet_test_DataLoader = getData()
+    train(classes, dataSet_train_DataLoader)
